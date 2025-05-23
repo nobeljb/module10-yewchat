@@ -28,4 +28,10 @@ module.exports = {
     experiments: {
         asyncWebAssembly: true,
     },
+    stats: {
+        warningsFilter: [/asset size limit/],
+    },
+    performance: {
+        hints: false,
+    },
 };

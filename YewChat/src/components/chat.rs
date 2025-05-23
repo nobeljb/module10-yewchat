@@ -43,6 +43,7 @@ pub struct Chat {
     chat_input: NodeRef,
     wss: WebsocketService,
     messages: Vec<MessageData>,
+    current_user: String,
     _producer: Box<dyn Bridge<EventBus>>,
 }
 
@@ -76,6 +77,7 @@ impl Component for Chat {
             messages: vec![],
             chat_input: NodeRef::default(),
             wss,
+            current_user: username,
             _producer: EventBus::bridge(ctx.link().callback(Msg::HandleMsg)),
         }
     }
@@ -92,7 +94,7 @@ impl Component for Chat {
                             .map(|u| UserProfile {
                                 name: u.into(),
                                 avatar: format!(
-                                    "https://avatars.dicebear.com/api/adventurer-neutral/{}.svg",
+                                    "https://api.dicebear.com/7.x/adventurer-neutral/svg?seed={}",
                                     u
                                 )
                                 .into(),
@@ -131,22 +133,38 @@ impl Component for Chat {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let submit = ctx.link().callback(|_| Msg::SubmitMessage);
         html! {
-            <div class="flex w-screen">
-                <div class="flex-none w-56 h-screen bg-gray-100">
-                    <div class="text-xl p-3">{"Users"}</div>
+            <div class="flex w-screen bg-gray-900 text-white">
+                <div class="flex-none w-56 h-screen bg-gray-800 border-r border-gray-700">
+                    <div class="text-xl p-3 text-white font-semibold border-b border-gray-700">{"👥 Users"}</div>
                     {
                         self.users.clone().iter().map(|u| {
+                            let is_current_user = u.name == self.current_user;
+                            let user_bg_class = if is_current_user {
+                                "bg-blue-600 border-blue-500"
+                            } else {
+                                "bg-gray-700 border-gray-600 hover:bg-gray-600"
+                            };
+
                             html!{
-                                <div class="flex m-3 bg-white rounded-lg p-2">
+                                <div class={format!("flex m-3 rounded-lg p-2 border transition-colors duration-200 {}", user_bg_class)}>
                                     <div>
-                                        <img class="w-12 h-12 rounded-full" src={u.avatar.clone()} alt="avatar"/>
+                                        <img class="w-12 h-12 rounded-full border-2 border-gray-500" src={u.avatar.clone()} alt="avatar"/>
                                     </div>
                                     <div class="flex-grow p-3">
-                                        <div class="flex text-xs justify-between">
-                                            <div>{u.name.clone()}</div>
+                                        <div class="flex text-sm justify-between">
+                                            <div class="font-medium">
+                                                {u.name.clone()}
+                                                if is_current_user {
+                                                    <span class="ml-2 text-xs bg-blue-800 px-2 py-1 rounded-full">{"You"}</span>
+                                                }
+                                            </div>
                                         </div>
-                                        <div class="text-xs text-gray-400">
-                                            {"Hi there!"}
+                                        <div class="text-xs text-gray-300">
+                                            if is_current_user {
+                                                {"That's you!"}
+                                            } else {
+                                                {"Online"}
+                                            }
                                         </div>
                                     </div>
                                 </div>
@@ -154,38 +172,79 @@ impl Component for Chat {
                         }).collect::<Html>()
                     }
                 </div>
-                <div class="grow h-screen flex flex-col">
-                    <div class="w-full h-14 border-b-2 border-gray-300"><div class="text-xl p-3">{"💬 Chat!"}</div></div>
-                    <div class="w-full grow overflow-auto border-b-2 border-gray-300">
+                <div class="grow h-screen flex flex-col bg-gray-900">
+                    <div class="w-full h-14 border-b border-gray-700 bg-gray-800">
+                        <div class="text-xl p-3 text-white font-semibold">{"💬 Chat Room"}</div>
+                    </div>
+                    <div class="w-full grow overflow-auto border-b border-gray-700 p-4 bg-gray-900">
                         {
                             self.messages.iter().map(|m| {
-                                let user = self.users.iter().find(|u| u.name == m.from).unwrap();
-                                html!{
-                                    <div class="flex items-end w-3/6 bg-gray-100 m-8 rounded-tl-lg rounded-tr-lg rounded-br-lg ">
-                                        <img class="w-8 h-8 rounded-full m-3" src={user.avatar.clone()} alt="avatar"/>
-                                        <div class="p-3">
-                                            <div class="text-sm">
-                                                {m.from.clone()}
+                                let user = self.users.iter().find(|u| u.name == m.from);
+                                let is_current_user = m.from == self.current_user;
+
+                                if let Some(user) = user {
+                                    let message_classes = if is_current_user {
+                                        "flex items-end justify-end w-full mb-4"
+                                    } else {
+                                        "flex items-end w-full mb-4"
+                                    };
+
+                                    let bubble_classes = if is_current_user {
+                                        "bg-blue-600 text-white rounded-tl-lg rounded-tr-lg rounded-bl-lg border border-blue-500 max-w-xs lg:max-w-md"
+                                    } else {
+                                        "bg-gray-700 text-white rounded-tl-lg rounded-tr-lg rounded-br-lg border border-gray-600 max-w-xs lg:max-w-md"
+                                    };
+
+                                    html!{
+                                        <div class={message_classes}>
+                                            if !is_current_user {
+                                                <img class="w-8 h-8 rounded-full mr-3 border-2 border-gray-600" src={user.avatar.clone()} alt="avatar"/>
+                                            }
+                                            <div class={bubble_classes}>
+                                                <div class="p-3">
+                                                    <div class="text-sm font-medium mb-1">
+                                                        if is_current_user {
+                                                            {"You"}
+                                                        } else {
+                                                            {m.from.clone()}
+                                                        }
+                                                    </div>
+                                                    <div class="text-sm">
+                                                        if m.message.ends_with(".gif") {
+                                                            <img class="mt-2 rounded max-w-full" src={m.message.clone()}/>
+                                                        } else {
+                                                            {m.message.clone()}
+                                                        }
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div class="text-xs text-gray-500">
-                                                if m.message.ends_with(".gif") {
-                                                    <img class="mt-3" src={m.message.clone()}/>
-                                                } else {
-                                                    {m.message.clone()}
-                                                }
-                                            </div>
+                                            if is_current_user {
+                                                <img class="w-8 h-8 rounded-full ml-3 border-2 border-blue-500" src={user.avatar.clone()} alt="avatar"/>
+                                            }
                                         </div>
-                                    </div>
+                                    }
+                                } else {
+                                    html!{}
                                 }
                             }).collect::<Html>()
                         }
-
                     </div>
-                    <div class="w-full h-14 flex px-3 items-center">
-                        <input ref={self.chat_input.clone()} type="text" placeholder="Message" class="block w-full py-2 pl-4 mx-3 bg-gray-100 rounded-full outline-none focus:text-gray-700" name="message" required=true />
-                        <button onclick={submit} class="p-3 shadow-sm bg-blue-600 w-10 h-10 rounded-full flex justify-center items-center color-white">
-                            <svg fill="#000000" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="fill-white">
-                                <path d="M0 0h24v24H0z" fill="none"></path><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+                    <div class="w-full h-16 flex px-4 items-center bg-gray-800 border-t border-gray-700">
+                        <input
+                            ref={self.chat_input.clone()}
+                            type="text"
+                            placeholder="Type your message..."
+                            class="block w-full py-3 pl-4 mx-3 bg-gray-700 border border-gray-600 rounded-full outline-none focus:border-blue-500 focus:bg-gray-600 text-white placeholder-gray-400 transition-colors duration-200"
+                            name="message"
+                            required=true
+                        />
+                        <button
+                            onclick={submit}
+                            class="p-3 shadow-lg bg-blue-600 hover:bg-blue-700 w-12 h-12 rounded-full flex justify-center items-center transition-colors duration-200 border border-blue-500"
+                        >
+                            <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white">
+                                <path d="M0 0h24v24H0z" fill="none"></path>
+                                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
                             </svg>
                         </button>
                     </div>
